@@ -75,6 +75,27 @@ async function claim(claimerAddress) {
     // Compute claimer PKH from address
     const claimerPkh = toByteString(addr.hashBuffer.toString('hex'));
 
+    // Verify current UTXO is still unspent (resilient to external competition)
+    let spentInfo = null;
+    try {
+      spentInfo = await wocGet(`/tx/${state.txid}/${state.outputIndex}/spent`);
+    } catch {}
+
+    if (spentInfo && spentInfo.txid) {
+      // Someone else claimed this generation — resync state by following the chain
+      const newTxHex = await new Promise((resolve, reject) => {
+        https.get(`https://api.whatsonchain.com/v1/bsv/main/tx/${spentInfo.txid}/hex`, res => {
+          let data = '';
+          res.on('data', c => data += c);
+          res.on('end', () => resolve(data.trim()));
+        }).on('error', reject);
+      });
+      // Update state to the winning tx
+      state.txid = spentInfo.txid;
+      state.generation = state.generation + 1;
+      fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
+    }
+
     // Fetch current organism tx as raw hex
     const txHex = await new Promise((resolve, reject) => {
       https.get(`https://api.whatsonchain.com/v1/bsv/main/tx/${state.txid}/hex`, res => {

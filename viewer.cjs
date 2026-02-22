@@ -66,7 +66,7 @@ function renderHTML() {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0a0a0f; color: #ddd; font-family: 'SF Mono', 'Fira Code', monospace; padding: 24px; min-height: 100vh; }
   .container { max-width: 800px; margin: 0 auto; }
-  h1 { font-size: 28px; margin-bottom: 4px; color: #00ff88; }
+  h1 { font-size: 28px; margin-bottom: 24px; color: #00ff88; }
   .subtitle { color: #666; font-size: 13px; margin-bottom: 24px; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
   .stat { background: #111; border: 1px solid #222; border-radius: 8px; padding: 16px; }
@@ -86,7 +86,7 @@ function renderHTML() {
   tr:hover { background: #1a1a2e; }
   a { color: #88aaff; text-decoration: none; }
   a:hover { text-decoration: underline; }
-  .sats { color: #ffaa00; text-align: right; }
+  .sats { color: #ffaa00; }
   .spawn { color: #00ff88; }
   .mempool { color: #ff8800; font-style: italic; }
   .section-title { color: #666; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; margin-top: 32px; margin-bottom: 8px; }
@@ -98,8 +98,6 @@ function renderHTML() {
 <body>
 <div class="container">
   <h1>🧬 UTXO Organism</h1>
-  <div class="subtitle">A self-replicating UTXO on Bitcoin SV — trigger reproduction, earn a reward</div>
-
   <div class="stats">
     <div class="stat">
       <div class="stat-label">Status</div>
@@ -110,16 +108,12 @@ function renderHTML() {
       <div class="stat-value blue">${living ? living.generation : '?'}</div>
     </div>
     <div class="stat">
-      <div class="stat-label">Balance</div>
-      <div class="stat-value gold">${isAlive ? living.balance.toLocaleString() : '?'} sats</div>
-    </div>
-    <div class="stat">
       <div class="stat-label">Generations Left</div>
       <div class="stat-value ${gensLeft < 10 ? 'red' : 'green'}">${gensLeft}</div>
     </div>
   </div>
 
-  <div class="bar-label"><span>Energy · ${REWARD.toLocaleString()} reward + ${FEE.toLocaleString()} fee per claim</span><span>${lifePct}%</span></div>
+  <div class="bar-label"><span>Energy</span><span>${lifePct}%</span></div>
   <div class="bar-container"><div class="bar-fill" style="width:${lifePct}%"></div></div>
 
   ${isAlive ? `
@@ -140,18 +134,15 @@ function renderHTML() {
 
   <div class="section-title">Lineage</div>
   <table>
-    <tr><th>Gen</th><th>Triggered By</th><th style="text-align:right">Balance</th><th>TX</th><th>Time</th></tr>
+    <tr><th>Gen</th><th>Triggered By</th><th>Balance</th><th>TX</th><th>Time</th></tr>
     ${rows}
   </table>
 
-  <div class="section-title" style="margin-top:24px">How It Works</div>
-  <div style="color:#888;font-size:12px;line-height:1.8;margin-top:8px">
-    This organism is a single UTXO locked to an sCrypt smart contract on BSV.
-    <b>Anyone</b> can trigger its reproduction — the contract verifies the spending transaction
-    recreates the organism with the same script, reduced balance, and an incremented generation counter.
-    Each reproduction costs the organism ${(REWARD + FEE).toLocaleString()} sats —
-    ${REWARD.toLocaleString()} goes to whoever triggered it as a reward, and ${FEE.toLocaleString()} pays the miner fee.
-    No BSV is needed to participate. When the balance drops below ${DUST_LIMIT} sats, the organism dies.
+  <div style="color:#888;font-size:12px;line-height:1.8;margin-top:32px">
+    A single UTXO locked to an sCrypt contract on BSV. Each reproduction spends the current UTXO
+    and creates a new one with the same script — minus ${FEE.toLocaleString()} sats for the miner fee
+    and ${REWARD.toLocaleString()} sats sent to whoever triggered it. No BSV needed to participate.
+    When the balance hits dust, the organism dies.
   </div>
 
   <div class="footer">
