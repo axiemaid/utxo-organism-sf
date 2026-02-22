@@ -1,0 +1,121 @@
+import { Organism } from './contracts/organism'
+import {
+    bsv,
+    TestWallet,
+    DefaultProvider,
+    MethodCallOptions,
+    PubKeyHash,
+    toByteString,
+} from 'scrypt-ts'
+import * as fs from 'fs'
+import * as path from 'path'
+
+async function main() {
+    // Load wallet (only for claimer address — no funding needed!)
+    const walletPath = path.join(process.env.HOME!, '.openclaw/bsv-wallet.json')
+    const wallet = JSON.parse(fs.readFileSync(walletPath, 'utf-8'))
+    const privateKey = bsv.PrivateKey.fromWIF(wallet.wif)
+    const claimerAddress = privateKey.toAddress()
+    const claimerPkh = toByteString(
+        bsv.crypto.Hash.sha256ripemd160(
+            privateKey.toPublicKey().toBuffer()
+        ).toString('hex')
+    )
+
+    // Load organism state
+    const statePath = path.join(__dirname, '../organism-state.json')
+    if (!fs.existsSync(statePath)) {
+        console.error('❌ No organism-state.json found. Run spawn first.')
+        process.exit(1)
+    }
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf-8'))
+
+    // Load contract artifact
+    Organism.loadArtifact(
+        JSON.parse(
+            fs.readFileSync(
+                path.join(__dirname, '../artifacts/organism.json'),
+                'utf-8'
+            )
+        )
+    )
+
+    // Set up provider and signer
+    const provider = new DefaultProvider({ network: bsv.Networks.mainnet })
+    const signer = new TestWallet(privateKey, provider)
+
+    console.log(`🔍 Looking for organism at ${state.txid}:${state.outputIndex}`)
+
+    await provider.connect()
+    const tx = await provider.getTransaction(state.txid)
+
+    // Recreate the organism from state
+    const organism = Organism.fromTx(tx, state.outputIndex)
+    await organism.connect(signer)
+
+    const currentBalance = BigInt(organism.balance)
+    const reward = organism.reward
+    const fee = organism.fee
+    const nextBalance = currentBalance - reward - fee
+
+    console.log(`\n🧬 Organism Status:`)
+    console.log(`   Generation: ${organism.generation}`)
+    console.log(`   Balance: ${currentBalance} sats`)
+    console.log(`   Reward: ${reward} sats`)
+    console.log(`   Fee: ${fee} sats`)
+    console.log(`   Next balance: ${nextBalance} sats`)
+    console.log(`   Claimer: ${claimerAddress.toString()}`)
+
+    if (nextBalance < organism.dustLimit) {
+        console.log('\n💀 Organism will die after this claim (below dust limit)')
+    }
+
+    // Create the next instance
+    const nextInstance = organism.next()
+    nextInstance.generation = organism.generation + 1n
+
+    // Call the claim method — self-funded, no extra inputs needed
+    console.log('\n⚡ Claiming reward (self-funded — no wallet balance needed)...')
+
+    const callResult = await organism.methods.claim(
+        PubKeyHash(claimerPkh),
+        {
+            next: {
+                instance:
+                    nextBalance >= organism.dustLimit
+                        ? nextInstance
+                        : undefined,
+                balance: Number(nextBalance),
+            },
+            // Don't auto-add funding inputs — organism pays for itself
+            autoPayFee: false,
+        } as MethodCallOptions<Organism>
+    )
+
+    const claimTx = callResult.tx
+
+    console.log('\n✅ Reward claimed!')
+    console.log(`   TX: ${claimTx.id}`)
+    console.log(`   Explorer: https://whatsonchain.com/tx/${claimTx.id}`)
+    console.log(`   Generation: ${organism.generation} → ${organism.generation + 1n}`)
+    console.log(`   Reward: ${reward} sats → ${claimerAddress.toString()}`)
+    console.log(`   Fee paid by organism: ${fee} sats`)
+
+    // Update state
+    if (nextBalance >= organism.dustLimit) {
+        state.txid = claimTx.id
+        state.outputIndex = 0
+        state.generation = Number(organism.generation) + 1
+        fs.writeFileSync(statePath, JSON.stringify(state, null, 2))
+        console.log(`\n📄 State updated. Organism lives on!`)
+        console.log(`   Remaining balance: ${nextBalance} sats`)
+        console.log(
+            `   Generations left: ~${(nextBalance - organism.dustLimit) / (reward + fee)}`
+        )
+    } else {
+        fs.unlinkSync(statePath)
+        console.log(`\n💀 Organism has died. State file removed.`)
+    }
+}
+
+main().catch(console.error)

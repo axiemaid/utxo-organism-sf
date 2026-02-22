@@ -1,0 +1,31 @@
+{
+  "name": "utxo-organism-sf",
+  "version": "1.0.0",
+  "description": "Self-funding UTXO organism — a living covenant on BSV that pays its own transaction fees",
+  "main": "index.js",
+  "scripts": {
+    "compile": "npx scrypt-cli compile -i src/contracts/organism.ts",
+    "spawn": "npx ts-node src/spawn.ts",
+    "claim": "npx ts-node src/claim.ts",
+    "status": "npx ts-node src/status.ts",
+    "scan": "node scanner.cjs"
+  },
+  "keywords": [
+    "bsv",
+    "utxo",
+    "covenant",
+    "scrypt",
+    "organism"
+  ],
+  "author": "axiemaid",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "scrypt-cli": "^0.2.3",
+    "scrypt-ts": "^1.4.5",
+    "scrypt-ts-transpiler": "^1.2.29",
+    "ts-node": "^10.9.2",
+    "ts-patch": "^3.3.0",
+    "typescript": "^5.3.3"
+  }
+}

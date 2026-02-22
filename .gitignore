@@ -1,0 +1,7 @@
+node_modules/
+dist/
+organism-state.json
+lineage.json
+*.scrypt
+*.scrypt.map
+*.transformer.json
