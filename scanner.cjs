@@ -6,7 +6,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const SPAWN_TXID = '83c1a61f28accc0addd3652a3bc40bfe44a7c92cd1230fa6f6692ed0e5c31c6d';
+const SPAWN_TXID = '2f9f16d8d3523c867775bb07f9b6960e8fbcff92a90494f6c3e193c0545c1fed';
 const LINEAGE_PATH = path.join(__dirname, 'lineage.json');
 const STATE_PATH = path.join(__dirname, 'organism-state.json');
 

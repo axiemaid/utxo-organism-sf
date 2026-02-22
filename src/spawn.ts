@@ -1,20 +1,14 @@
 import { Organism } from './contracts/organism'
-import {
-    bsv,
-    TestWallet,
-    DefaultProvider,
-    toByteString,
-    MethodCallOptions,
-} from 'scrypt-ts'
+import { bsv, DefaultProvider } from 'scrypt-ts'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as https from 'https'
 
 // ─── Configuration ───────────────────────────────────────────
 const REWARD_PER_GENERATION = 1000n      // sats per claim
-const FEE = 500n                          // self-funding tx fee
+const FEE = 3000n                         // self-funding tx fee (~0.75 sat/byte for 4KB tx)
 const DUST_LIMIT = 546n                   // BSV dust limit
 const INITIAL_FUNDING = 100_000           // sats to fund the organism
-const PROTOCOL_PREFIX = 'ORG1'
 
 async function main() {
     // Load wallet
@@ -32,10 +26,6 @@ async function main() {
         )
     )
 
-    // Set up provider and signer (mainnet)
-    const provider = new DefaultProvider({ network: bsv.Networks.mainnet })
-    const signer = new TestWallet(privateKey, provider)
-
     // Create organism instance
     const organism = new Organism(
         REWARD_PER_GENERATION,
@@ -44,41 +34,100 @@ async function main() {
         0n  // generation starts at 0
     )
 
-    // Connect to signer
-    await organism.connect(signer)
+    const lockingScript = organism.lockingScript
 
-    // Deploy the organism
     console.log('🧬 Spawning UTXO Organism...')
     console.log(`   Reward per generation: ${REWARD_PER_GENERATION} sats`)
+    console.log(`   Fee per claim: ${FEE} sats`)
     console.log(`   Dust limit: ${DUST_LIMIT} sats`)
     console.log(`   Initial funding: ${INITIAL_FUNDING} sats`)
-    console.log(`   Fee per claim: ${FEE} sats`)
     console.log(`   Max generations: ${(BigInt(INITIAL_FUNDING) - DUST_LIMIT) / (REWARD_PER_GENERATION + FEE)}`)
 
-    // Set fee rate to 1 sat/byte to ensure mining
-    ;(organism as any).feePerKb = 1000
+    // Fetch UTXOs for our address
+    const provider = new DefaultProvider({ network: bsv.Networks.mainnet })
+    await provider.connect()
+    const address = privateKey.toAddress()
+    console.log(`\n   Wallet: ${address.toString()}`)
 
-    const deployTx = await organism.deploy(INITIAL_FUNDING)
+    const utxos = await provider.listUnspent(address)
+    const confirmed = utxos.filter((u: any) => !u.txId?.startsWith('83c1a6') && !u.txId?.startsWith('dda7b6'))
+    console.log(`   UTXOs: ${confirmed.length} (${utxos.length} total, filtering stuck ones)`)
 
-    console.log('\n✅ Organism spawned!')
-    console.log(`   TX: ${deployTx.id}`)
-    console.log(`   Explorer: https://whatsonchain.com/tx/${deployTx.id}`)
+    if (confirmed.length === 0) {
+        console.error('❌ No UTXOs available')
+        process.exit(1)
+    }
 
-    // Save organism info for the claimer
+    // Build tx manually with proper fee
+    const tx = new bsv.Transaction()
+    let totalIn = 0
+    for (const utxo of confirmed) {
+        tx.from(utxo as any)
+        totalIn += utxo.satoshis
+        if (totalIn >= INITIAL_FUNDING + 5000) break // enough for funding + generous spawn fee
+    }
+
+    // Output 0: organism
+    tx.addOutput(new bsv.Transaction.Output({
+        script: lockingScript,
+        satoshis: INITIAL_FUNDING,
+    }))
+
+    // Change back to wallet
+    tx.change(address)
+    tx.feePerKb(2000) // 2 sat/byte — generous
+    tx.sign(privateKey)
+
+    const size = tx.toBuffer().length
+    const fee = tx.getFee()
+    console.log(`\n   TX size: ${size} bytes`)
+    console.log(`   Spawn fee: ${fee} sats (${(fee / size).toFixed(2)} sat/byte)`)
+
+    // Broadcast via WoC
+    const txhex = tx.uncheckedSerialize()
+    const postData = JSON.stringify({ txhex })
+
+    const result = await new Promise<string>((resolve, reject) => {
+        const req = https.request({
+            hostname: 'api.whatsonchain.com',
+            path: '/v1/bsv/main/tx/raw',
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }
+        }, res => {
+            let d = ''
+            res.on('data', (c: any) => d += c)
+            res.on('end', () => {
+                if (res.statusCode !== 200) reject(new Error(`WoC ${res.statusCode}: ${d}`))
+                else resolve(d)
+            })
+        })
+        req.on('error', reject)
+        req.write(postData)
+        req.end()
+    })
+
+    console.log(`\n✅ Organism spawned!`)
+    console.log(`   TX: ${tx.id}`)
+    console.log(`   Broadcast: ${result}`)
+    console.log(`   Explorer: https://whatsonchain.com/tx/${tx.id}`)
+
+    // Save state
     const info = {
-        txid: deployTx.id,
+        txid: tx.id,
         outputIndex: 0,
         reward: Number(REWARD_PER_GENERATION),
+        fee: Number(FEE),
         dustLimit: Number(DUST_LIMIT),
         initialFunding: INITIAL_FUNDING,
         generation: 0,
+        spawnTxid: tx.id,
         spawnedAt: new Date().toISOString(),
-        scriptHex: organism.lockingScript.toHex(),
+        scriptHex: lockingScript.toHex(),
     }
 
     const infoPath = path.join(__dirname, '../organism-state.json')
     fs.writeFileSync(infoPath, JSON.stringify(info, null, 2))
-    console.log(`\n📄 State saved to: ${infoPath}`)
+    console.log(`📄 State saved to: ${infoPath}`)
 }
 
 main().catch(console.error)
