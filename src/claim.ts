@@ -6,6 +6,7 @@ import {
     MethodCallOptions,
     PubKeyHash,
     toByteString,
+    SmartContract,
 } from 'scrypt-ts'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -74,25 +75,87 @@ async function main() {
     const nextInstance = organism.next()
     nextInstance.generation = organism.generation + 1n
 
-    // Call the claim method — self-funded, no extra inputs needed
+    // Custom tx builder — organism pays for everything, no extra inputs
+    organism.bindTxBuilder('claim', (
+        current: Organism,
+        options: MethodCallOptions<Organism>,
+        claimerPkhArg: PubKeyHash
+    ) => {
+        const unsignedTx = new bsv.Transaction()
+
+        // Input: the organism UTXO
+        unsignedTx.addInput(current.buildContractInput())
+
+        const alive = nextBalance >= current.dustLimit
+
+        if (alive) {
+            // Output 0: organism continues with reduced balance
+            unsignedTx.addOutput(
+                new bsv.Transaction.Output({
+                    script: nextInstance.lockingScript,
+                    satoshis: Number(nextBalance),
+                })
+            )
+        }
+
+        // Output 1 (or 0 if dying): reward to claimer
+        unsignedTx.addOutput(
+            new bsv.Transaction.Output({
+                script: bsv.Script.buildPublicKeyHashOut(claimerAddress),
+                satoshis: Number(reward),
+            })
+        )
+
+        // Fee is implicit: input - outputs = miner fee
+
+        return Promise.resolve({
+            tx: unsignedTx,
+            atInputIndex: 0,
+            nexts: alive
+                ? [{ instance: nextInstance, atOutputIndex: 0, balance: Number(nextBalance) }]
+                : [],
+        })
+    })
+
+    // Call the claim method
     console.log('\n⚡ Claiming reward (self-funded — no wallet balance needed)...')
 
     const callResult = await organism.methods.claim(
         PubKeyHash(claimerPkh),
         {
-            next: {
-                instance:
-                    nextBalance >= organism.dustLimit
-                        ? nextInstance
-                        : undefined,
-                balance: Number(nextBalance),
-            },
-            // Don't auto-add funding inputs — organism pays for itself
             autoPayFee: false,
+            partiallySigned: true,
+            estimateFee: false,
         } as MethodCallOptions<Organism>
     )
 
     const claimTx = callResult.tx
+
+    // Broadcast manually via WoC (bypass provider fee validation)
+    const https = await import('https')
+    const txhex = claimTx.uncheckedSerialize()
+    console.log(`   TX size: ${txhex.length / 2} bytes`)
+    const postData = JSON.stringify({ txhex })
+
+    const broadcastResult: string = await new Promise((resolve, reject) => {
+        const req = https.request({
+            hostname: 'api.whatsonchain.com',
+            path: '/v1/bsv/main/tx/raw',
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }
+        }, res => {
+            let d = ''
+            res.on('data', (c: any) => d += c)
+            res.on('end', () => {
+                if (res.statusCode !== 200) reject(new Error(`WoC ${res.statusCode}: ${d}`))
+                else resolve(d)
+            })
+        })
+        req.on('error', reject)
+        req.write(postData)
+        req.end()
+    })
+    console.log(`   Broadcast: ${broadcastResult}`)
 
     console.log('\n✅ Reward claimed!')
     console.log(`   TX: ${claimTx.id}`)
