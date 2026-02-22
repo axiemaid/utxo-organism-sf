@@ -98,7 +98,7 @@ function renderHTML() {
 <body>
 <div class="container">
   <h1>🧬 UTXO Organism</h1>
-  <div class="subtitle">A self-propagating covenant on Bitcoin SV — no owner, no server, just script</div>
+  <div class="subtitle">A self-replicating UTXO on Bitcoin SV — trigger reproduction, earn a reward</div>
 
   <div class="stats">
     <div class="stat">
@@ -123,35 +123,35 @@ function renderHTML() {
   <div class="bar-container"><div class="bar-fill" style="width:${lifePct}%"></div></div>
 
   ${isAlive ? `
-  <div class="section-title">Claim Reward</div>
+  <div class="section-title">Trigger Reproduction</div>
   <div style="background:#111;border:1px solid #222;border-radius:8px;padding:16px;margin-bottom:8px">
-    <div style="color:#888;font-size:12px;margin-bottom:12px">Enter your BSV address to claim ${REWARD.toLocaleString()} sats. No BSV needed — the organism pays the miner fee.</div>
+    <div style="color:#888;font-size:12px;margin-bottom:12px">Advance the organism to its next generation. You receive ${REWARD.toLocaleString()} sats as a reward — no BSV needed.</div>
     <form id="claim-form" style="display:flex;gap:8px">
-      <input id="claim-addr" type="text" placeholder="Your BSV address" spellcheck="false"
+      <input id="claim-addr" type="text" placeholder="Your BSV address (for reward)" spellcheck="false"
         style="flex:1;background:#0a0a0f;border:1px solid #333;border-radius:4px;padding:10px 12px;color:#ddd;font-family:inherit;font-size:13px;outline:none" />
       <button type="submit" id="claim-btn"
         style="background:#00ff88;color:#0a0a0f;border:none;border-radius:4px;padding:10px 20px;font-family:inherit;font-size:13px;font-weight:bold;cursor:pointer;white-space:nowrap">
-        ⚡ Claim
+        🧬 Reproduce
       </button>
     </form>
     <div id="claim-result" style="margin-top:10px;font-size:12px;display:none"></div>
   </div>
-  ` : '<div style="background:#2a1a1a;border:1px solid #ff444444;border-radius:8px;padding:16px;margin-bottom:8px;color:#ff4444;font-size:13px">💀 Organism is dead — no more claims possible.</div>'}
+  ` : '<div style="background:#2a1a1a;border:1px solid #ff444444;border-radius:8px;padding:16px;margin-bottom:8px;color:#ff4444;font-size:13px">💀 Organism is dead — no more reproductions possible.</div>'}
 
   <div class="section-title">Lineage</div>
   <table>
-    <tr><th>Gen</th><th>Claimer</th><th style="text-align:right">Balance</th><th>TX</th><th>Time</th></tr>
+    <tr><th>Gen</th><th>Triggered By</th><th style="text-align:right">Balance</th><th>TX</th><th>Time</th></tr>
     ${rows}
   </table>
 
   <div class="section-title" style="margin-top:24px">How It Works</div>
   <div style="color:#888;font-size:12px;line-height:1.8;margin-top:8px">
     This organism is a single UTXO locked to an sCrypt smart contract on BSV.
-    <b>Anyone</b> can claim it — the contract verifies the spending transaction recreates the organism
-    with the same script, less ${(REWARD + FEE).toLocaleString()} sats, and an incremented generation counter.
-    The claimer receives ${REWARD.toLocaleString()} sats as a reward. The miner fee of
-    ${FEE} sats is also paid from the organism's balance — claimers need zero BSV to participate.
-    When the balance drops below ${DUST_LIMIT} sats, the organism dies — no child is created.
+    <b>Anyone</b> can trigger its reproduction — the contract verifies the spending transaction
+    recreates the organism with the same script, reduced balance, and an incremented generation counter.
+    Each reproduction costs the organism ${(REWARD + FEE).toLocaleString()} sats —
+    ${REWARD.toLocaleString()} goes to whoever triggered it as a reward, and ${FEE.toLocaleString()} pays the miner fee.
+    No BSV is needed to participate. When the balance drops below ${DUST_LIMIT} sats, the organism dies.
   </div>
 
   <div class="footer">
@@ -170,7 +170,7 @@ if (form) form.addEventListener('submit', async (e) => {
   const result = document.getElementById('claim-result');
   if (!addr) return;
   btn.disabled = true;
-  btn.textContent = '⏳ Claiming...';
+  btn.textContent = '⏳ Reproducing...';
   result.style.display = 'block';
   result.style.color = '#888';
   result.textContent = 'Building and broadcasting transaction...';
@@ -183,7 +183,7 @@ if (form) form.addEventListener('submit', async (e) => {
     const data = await res.json();
     if (data.success) {
       result.style.color = '#00ff88';
-      result.innerHTML = '✅ Claimed ' + data.reward + ' sats! TX: <a href="https://whatsonchain.com/tx/' + data.txid + '" target="_blank" style="color:#88aaff">' + data.txid.slice(0, 16) + '…</a>';
+      result.innerHTML = '✅ Gen ' + data.generation + ' born! +' + data.reward + ' sats reward. TX: <a href="https://whatsonchain.com/tx/' + data.txid + '" target="_blank" style="color:#88aaff">' + data.txid.slice(0, 16) + '…</a>';
       setTimeout(() => location.reload(), 3000);
     } else {
       result.style.color = '#ff4444';
@@ -194,7 +194,7 @@ if (form) form.addEventListener('submit', async (e) => {
     result.textContent = '❌ ' + err.message;
   }
   btn.disabled = false;
-  btn.textContent = '⚡ Claim';
+  btn.textContent = '🧬 Reproduce';
 });
 </script>
 </body>
